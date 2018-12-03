@@ -251,6 +251,38 @@ class AES {
 	}
 
 	/**
+     * Shifts 2nd,3rd,4th rows of state by row index
+     * @param state Array whose 2nd,3rd,4th rows will be shifted
+     */
+	public static void invShiftRows(int[][] state) {
+		for (int row = 0; row < STATE_ROWS; row++) {
+			state[row] = rotateRight(state[row], row);
+		}
+	}
+
+	/** 
+	 * Helper function - shifts an array's cells by 'offset' places to the right
+     * @param arr array to be rotated
+     * @param offset number of right rotations
+     * @return rotated array
+     */
+	public static int[] rotateRight(int[] arr, int offset) {
+		// will yield same arr
+		if (offset % 4 == 0) {
+			return arr;
+		}
+		while (offset > 0) {
+			int temp = arr[arr.length-1];
+			for (int i = arr.length-1; i > 0; i--) {
+				arr[i] = arr[i-1];
+			}
+			arr[0] = temp;
+			offset--;
+		}
+		return arr;
+	}
+
+	/**
      * Each element in the current state is replaced with a value based on an operation
      * in the mc helper functions.
      * @param state the state matrix that will be multiplied against the galois field
