@@ -118,12 +118,14 @@ class AES {
 
 		int[][] state = inputToState(Arrays.copyOfRange(paddedInput, 0, BLOCK_LENGTH));
 
+		System.out.println();
+		System.out.println("Original State:");
 		printState(state);
 
 		subBytes(state);
 
 		System.out.println();
-		System.out.println("SubBytes:");
+		System.out.println("InvSubBytes:");
 		printState(state);
 
 		shiftRows(state);
@@ -190,7 +192,7 @@ class AES {
 
 	/**
      * Replaces all elements in the passed array with values in sbox[][].
-     * @param state Array whose value will be replaced
+     * @param state Array whose values will be replaced
      */
 	public static void subBytes(int[][] state) {
 		for (int row = 0; row < STATE_ROWS; row++) {
@@ -198,6 +200,20 @@ class AES {
 				// hex val is used to determine row/col coords of sbox value
 				int hex = state[row][col];
 				state[row][col] = sbox[hex / 16][hex % 16];
+			}
+		}
+	}
+
+	/**
+     * Reverses the operations from subBytes by using invsbox
+     * @param state Array whose values will be replaced
+     */
+	public static void invSubBytes(int[][] state) {
+		for (int row = 0; row < STATE_ROWS; row++) {
+			for (int col = 0; col < STATE_COLS; col++) {
+				// hex val is used to determine row/col coords of sbox value
+				int hex = state[row][col];
+				state[row][col] = invsbox[hex / 16][hex % 16];
 			}
 		}
 	}
