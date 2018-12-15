@@ -362,6 +362,13 @@ class AES {
 		}
 	}
 
+	/**
+     * Prior to encryption or decryption the key must be expanded. The expanded key is used in the Add Round Key function.
+     * @param key the secret key to be expanded
+     * @param numAESRounds the number of encryption rounds based on key size (128->10, 192->12, 256->14)
+     * @param numExpRounds the number of key expansion rounds
+     * @return the expanded key
+     */
 	public static int[] expandKey(int[] key, int numAESRounds, int numExpRounds) {
 		int ekSize = 16 * (numAESRounds + 1); // 16 is the size of the block in bytes.
 		int[] ek = new int[ekSize];
@@ -384,10 +391,20 @@ class AES {
         return ek;
 	}
 
+	/**
+     * Rotates an array to the left by one 
+     * @param arr array to be rotated
+     * @return rotated array
+     */
 	public static int[] rotWord(int[] arr) {
 		return rotateLeft(arr, 1);
 	}
 
+	/**
+     * Applies the S-box value substitution as described in Bytes Sub function to each of the 4 bytes in the argument.
+     * @param arr values used to sample sbox table
+     * @return array of sampled sbox values
+     */
 	public static int[] subWord(int[] arr) {
 		for (int i = 0; i < STATE_COLS; i++) {
 			int hex = arr[i];
@@ -396,6 +413,11 @@ class AES {
 		return arr;
 	}
 
+	/**
+     * This function returns a 4 int array based on the rcon table
+     * @param roundNum,keySize used to determine index used to sample value from rcon table
+     * @return 4 int array with value sampled from rcon table followed by 0x00s
+     */
 	public static int[] rcon(int roundNum, int keySize) {
 		int[] arr = new int[4]; // all values initialized to 0x00;
 		int index = (roundNum / (keySize / 4)) - 1;
@@ -403,16 +425,31 @@ class AES {
 		return arr;
 	}
 
+	/**
+     * Returns 4 elements of the Expanded Key after the specified offset.
+     * @param offset marks the index to start sampling
+     * @return 4 elements of the Expanded Key
+     */
 	public static int[] EK(int[] expandedKey, int offset) {
 		int[] subEK = {expandedKey[offset], expandedKey[offset + 1], expandedKey[offset + 2], expandedKey[offset + 3]};
 		return subEK;
 	}
 
+	/**
+     * Returns 4 elements of the Key after the specified offset.
+     * @param offset marks the index to start sampling
+     * @return 4 elements of the Key
+     */
 	public static int[] K(int[] key, int offset) {
 		int[] subK = {key[offset], key[offset + 1], key[offset + 2], key[offset + 3]};
 		return subK;
 	}
 
+	/**
+     * Performs XOR operation on two arrays
+     * @param a,b arrays to be XORed
+     * @return an array that is the result of XORing a and b
+     */
 	public static int[] XOR(int[] a, int[] b) {
 		int[] c = new int[a.length];
 		for (int i = 0; i < a.length; i++){
