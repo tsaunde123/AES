@@ -101,50 +101,58 @@ class AES {
 		{ 0x39, 0x4B, 0xDD, 0x7C, 0x84, 0x97, 0xA2, 0xFD, 0x1C, 0x24, 0x6C, 0xB4, 0xC7, 0x52, 0xF6, 0x01 }
 	};
 
+	public static final int[] rconTable = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a};
+
 
 	public static void main(String[] args) throws NoSuchAlgorithmException {
 		// create new key
 		KeyGenerator keyGen = KeyGenerator.getInstance("AES");
 		keyGen.init(KEY_LENGTH);
 		SecretKey secretKey = keyGen.generateKey();
-		// byte[] keyB = secretKey.getEncoded();
+		int[] key = convertToIntArray(secretKey.getEncoded());
 
-		String input = "helloworldwhenyougethere";//scanner.nextLine();
-		int[] intArr = convertToIntArray(input.getBytes());
-		printArray(intArr);
+		System.out.println("KEY " + Arrays.toString(key) + " -> " + key.length);
 
-		int[] paddedInput = applyPadding(intArr);
-		printArray(paddedInput);
-
-		int[][] state = inputToState(Arrays.copyOfRange(paddedInput, 0, BLOCK_LENGTH));
-
+		int [] expandedKey = expandKey(key, 10, 44); //16:44, 24:52, 32:60
+		System.out.println("Expanded KEY " + Arrays.toString(expandedKey) + " -> " + expandedKey.length);
 		System.out.println();
-		System.out.println("Original State:");
-		printState(state);
 
-		subBytes(state);
+		// String input = "helloworldwhenyougethere";//scanner.nextLine();
+		// int[] intArr = convertToIntArray(input.getBytes());
+		// printArray(intArr);
 
-		System.out.println();
-		System.out.println("InvSubBytes:");
-		printState(state);
+		// int[] paddedInput = applyPadding(intArr);
+		// printArray(paddedInput);
 
-		shiftRows(state);
+		// int[][] state = inputToState(Arrays.copyOfRange(paddedInput, 0, BLOCK_LENGTH));
 
-		System.out.println();
-		System.out.println("ShiftRows:");
-		printState(state);
+		// System.out.println();
+		// System.out.println("Original State:");
+		// printState(state);
 
-		mixColumns(state);
+		// subBytes(state);
 
-		System.out.println();
-		System.out.println("MixColumns:");
-		printState(state);
+		// System.out.println();
+		// System.out.println("InvSubBytes:");
+		// printState(state);
 
-		invMixColumns(state);
+		// shiftRows(state);
 
-		System.out.println();
-		System.out.println("InvMixColumns:");
-		printState(state);
+		// System.out.println();
+		// System.out.println("ShiftRows:");
+		// printState(state);
+
+		// mixColumns(state);
+
+		// System.out.println();
+		// System.out.println("MixColumns:");
+		// printState(state);
+
+		// invMixColumns(state);
+
+		// System.out.println();
+		// System.out.println("InvMixColumns:");
+		// printState(state);
 
 
 	}
@@ -354,15 +362,77 @@ class AES {
 		}
 	}
 
+	public static int[] expandKey(int[] key, int numAESRounds, int numExpRounds) {
+		int ekSize = 16 * (numAESRounds + 1); // 16 is the size of the block in bytes.
+		int[] ek = new int[ekSize];
+		int nk = key.length / 4; //will only be 4, 6 or 8 -> 16(bytes)/4, 24/4 or 32/4
+
+        System.arraycopy(key, 0, ek, 0, key.length); // Acts as 4 calls to k() : The first bytes of the expanded key are always equal to the key.
+
+        int round = key.length / 4;
+        while (round < numExpRounds) {
+        	int[] temp = EK(ek, (round - 1) * 4);
+        	if (round % nk == 0) {
+				temp = XOR(subWord(rotWord(temp)), rcon(round, key.length));
+        	} else if (nk > 6 && round % nk == 4) {
+        		temp = subWord(temp);
+        	}
+        	temp = XOR(temp, EK(ek, (round - nk) * 4));
+        	System.arraycopy(temp, 0, ek, round*4, temp.length);
+        	round++;
+        }
+        return ek;
+	}
+
+	public static int[] rotWord(int[] arr) {
+		return rotateLeft(arr, 1);
+	}
+
+	public static int[] subWord(int[] arr) {
+		for (int i = 0; i < STATE_COLS; i++) {
+			int hex = arr[i];
+			arr[i] = sbox[hex / 16][hex % 16];
+		}
+		return arr;
+	}
+
+	public static int[] rcon(int roundNum, int keySize) {
+		int[] arr = new int[4]; // all values initialized to 0x00;
+		int index = (roundNum / (keySize / 4)) - 1;
+		arr[0] = rconTable[index]; // only first element is updated based on lookup
+		return arr;
+	}
+
+	public static int[] EK(int[] expandedKey, int offset) {
+		int[] subEK = {expandedKey[offset], expandedKey[offset + 1], expandedKey[offset + 2], expandedKey[offset + 3]};
+		return subEK;
+	}
+
+	public static int[] K(int[] key, int offset) {
+		int[] subK = {key[offset], key[offset + 1], key[offset + 2], key[offset + 3]};
+		return subK;
+	}
+
+	public static int[] XOR(int[] a, int[] b) {
+		int[] c = new int[a.length];
+		for (int i = 0; i < a.length; i++){
+			c[i] = a[i] ^ b[i];
+		}
+		return c;
+	}
+
 
 	public static int[] convertToIntArray(byte[] input) {
 	    int[] ret = new int[input.length];
 	    for (int i = 0; i < input.length; i++)
 	    {
-	        ret[i] = input[i]; // & 0xff; // Range 0 to 255, not -128 to 127
+	        ret[i] = input[i] & 0xFF; // Range 0 to 255, not -128 to 127. Without 0xFF, table lookups yield indexOutOfBounds due to negative values
 	    }
 	    return ret;
 	}
+
+
+
    	
 
 
