@@ -20,6 +20,9 @@ import javax.crypto.spec.SecretKeySpec;
 
 import java.security.NoSuchAlgorithmException;
 
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.Charset;
+
 
 class AES {
 	// maps hex values to SBOX/INVSBOX indexes
@@ -110,51 +113,81 @@ class AES {
 		keyGen.init(KEY_LENGTH);
 		SecretKey secretKey = keyGen.generateKey();
 		int[] key = convertToIntArray(secretKey.getEncoded());
+		int [] expandedKey = expandKey(key, 10, 44); //16:44, 24:52, 32:60
 
 		System.out.println("KEY " + Arrays.toString(key) + " -> " + key.length);
-
-		int [] expandedKey = expandKey(key, 10, 44); //16:44, 24:52, 32:60
-		System.out.println("Expanded KEY " + Arrays.toString(expandedKey) + " -> " + expandedKey.length);
-		System.out.println();
-
-		// String input = "helloworldwhenyougethere";//scanner.nextLine();
-		// int[] intArr = convertToIntArray(input.getBytes());
-		// printArray(intArr);
-
-		// int[] paddedInput = applyPadding(intArr);
-		// printArray(paddedInput);
-
-		// int[][] state = inputToState(Arrays.copyOfRange(paddedInput, 0, BLOCK_LENGTH));
+		// System.out.println("Expanded KEY " + Arrays.toString(expandedKey) + " -> " + expandedKey.length);
 
 		// System.out.println();
-		// System.out.println("Original State:");
-		// printState(state);
 
-		// subBytes(state);
+		String input = "helloworldwhenyougethere";//scanner.nextLine();
+		encrypt(input, expandedKey, 10);
 
-		// System.out.println();
-		// System.out.println("InvSubBytes:");
-		// printState(state);
+	}
 
-		// shiftRows(state);
+	/**
+     * Performs the encryption of input text
+     * @param input plaintext to be encrypted
+     * @return encrypted plaintext -> ciphertext
+     */
+	public static void encrypt(String input, int[] expandedKey, int numRounds) {
+		int[] intArr = convertToIntArray(input.getBytes());
 
-		// System.out.println();
-		// System.out.println("ShiftRows:");
-		// printState(state);
+		int[] paddedInput = applyPadding(intArr);
 
-		// mixColumns(state);
+		int numStateBlocks = paddedInput.length / BLOCK_LENGTH;
+		int[][][] stateBlocks = new int[numStateBlocks][STATE_ROWS][STATE_COLS];
 
-		// System.out.println();
-		// System.out.println("MixColumns:");
-		// printState(state);
+		for (int i = 0; i < numStateBlocks; i++) {
+			int cpStart = i * BLOCK_LENGTH;
+			int cpEnd = cpStart + BLOCK_LENGTH;
+			stateBlocks[i] = inputToState(Arrays.copyOfRange(paddedInput, cpStart, cpEnd));
+			int[][] state = stateBlocks[i];
+			addRoundKey(state, Arrays.copyOfRange(expandedKey, 0, BLOCK_LENGTH));
+			for (int r = 1; r < numRounds; r++) {
+				subBytes(state);
+				shiftRows(state);
+				mixColumns(state);
+				addRoundKey(state, Arrays.copyOfRange(expandedKey, r * BLOCK_LENGTH, (r * BLOCK_LENGTH) + BLOCK_LENGTH));
+			}
+			subBytes(state);
+			shiftRows(state);
+			addRoundKey(state, Arrays.copyOfRange(expandedKey, numRounds * BLOCK_LENGTH, (numRounds * BLOCK_LENGTH) + BLOCK_LENGTH));
+		}
+		String out = MatrixToString(stateBlocks[0]);
+		System.out.println("Out: " + out);
+		System.out.println(hexToString(out));
+	}
 
-		// invMixColumns(state);
+	/**
+     * Performs the decryption of the cipher text
+     * @param input ciphertext to be decrypted
+     * @return decrypted ciphertext -> plaintext
+     */
+	public static void decrypt(String input, int[] expandedKey, int numRounds) {
+		int[] inputArr = convertToIntArray(input.getBytes());
 
-		// System.out.println();
-		// System.out.println("InvMixColumns:");
-		// printState(state);
+		int numStateBlocks = inputArr.length / BLOCK_LENGTH;
+		int[][][] stateBlocks = new int[numStateBlocks][STATE_ROWS][STATE_COLS];
 
-
+		for (int i = 0; i < numStateBlocks; i++) {
+			int cpStart = i * BLOCK_LENGTH;
+			int cpEnd = cpStart + BLOCK_LENGTH;
+			stateBlocks[i] = inputToState(Arrays.copyOfRange(inputArr, cpStart, cpEnd));
+			int[][] state = stateBlocks[i];
+			addRoundKey(state, Arrays.copyOfRange(expandedKey, 0, BLOCK_LENGTH));
+			for (int r = 1; r < numRounds; r++) {
+				shiftRows(state);
+				subBytes(state);
+				addRoundKey(state, Arrays.copyOfRange(expandedKey, r * BLOCK_LENGTH, (r * BLOCK_LENGTH) + BLOCK_LENGTH));
+				mixColumns(state);
+			}
+			shiftRows(state);
+			subBytes(state);
+			addRoundKey(state, Arrays.copyOfRange(expandedKey, numRounds * BLOCK_LENGTH, (numRounds * BLOCK_LENGTH) + BLOCK_LENGTH));
+		}
+		String out = MatrixToString(stateBlocks[0]);
+		System.out.println(out);
 	}
 
 	/**
@@ -196,6 +229,17 @@ class AES {
    			}
    		}
    		return state;
+    }
+
+    /**
+     * Each of the 16 bytes of the state is XORed against each of the 16 bytes of a portion of the expanded 
+     * key for the current round
+     * @param expKeySlice portion of the expanded key to be XORed with the state
+     */
+    public static void addRoundKey(int[][] state, int[] expKeySlice) {
+    	for (int row = 0; row < STATE_ROWS; row++) {
+			state[row] = XOR(state[row], EK(expKeySlice, row * 4));
+    	}
     }
 
 	/**
@@ -467,6 +511,33 @@ class AES {
 	    }
 	    return ret;
 	}
+
+	public static String MatrixToString(int[][] m) //takes in a matrix and converts it into a line of 32 hex characters.
+    {
+        String t = "";
+        for (int i = 0; i < m.length; i++) {
+            for (int j = 0; j < m[0].length; j++) {
+                String h = Integer.toHexString(m[j][i]).toUpperCase();
+                if (h.length() == 1) {
+                    t += '0' + h;
+                } else {
+                    t += h;
+                }
+            }
+        }
+        return t;
+    }
+
+    public static String hexToString(String hex) {
+	    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+	    for (int i = 0; i < hex.length(); i += 2) {
+	      String str = hex.substring(i, i + 2);
+	      int byteVal = Integer.parseInt(str, 16);
+	      baos.write(byteVal);
+	    } 
+	    String s = new String(baos.toByteArray(), Charset.forName("UTF-8"));
+	    return s;
+    }
 
 
 
