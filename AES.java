@@ -27,7 +27,7 @@ import java.nio.charset.Charset;
 class AES {
 	// maps hex values to SBOX/INVSBOX indexes
 	public static int BLOCK_LENGTH = 16; // 16 bytes -> 128 bits
-	public static int KEY_LENGTH = 128; // in bits
+	public static int DEFAULT_KEY_LENGTH = 128; // in bits
 	public static int STATE_ROWS = 4, STATE_COLS = 4;
 
 	/**
@@ -108,12 +108,42 @@ class AES {
 
 
 	public static void main(String[] args) throws NoSuchAlgorithmException {
+		int keySize = 0;		
+		if (args.length == 0) {
+			keySize = DEFAULT_KEY_LENGTH;
+		} else {
+			try {
+				keySize = Integer.parseInt(args[0]);
+				if(keySize != 128 && keySize != 192 && keySize != 256) {
+					throw new Exception("Invalid argument. Key size must be equal to 128, 192 or 256.");
+				}
+			} catch(Exception e) {
+				System.out.println("Invalid argument. Key size must be equal to 128, 192 or 256.");
+				System.out.println("Or leave arguments empty for default key size: 128");
+				return;
+			}
+		}
+
+		int numAESRounds = 0, numKeyExpRounds = 0;
+		if (keySize == 128) {
+			numAESRounds = 10;
+			numKeyExpRounds = 44;
+		} else if(keySize == 192) {
+			numAESRounds = 12;
+			numKeyExpRounds = 52;
+		} else {
+			numAESRounds = 14;
+			numKeyExpRounds = 60;
+		}
+
 		// create new key
 		KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-		keyGen.init(KEY_LENGTH);
+		keyGen.init(keySize);
 		SecretKey secretKey = keyGen.generateKey();
+
 		int[] key = convertToIntArray(secretKey.getEncoded());
-		int [] expandedKey = expandKey(key, 10, 44); //16:44, 24:52, 32:60
+
+		int[] expandedKey = expandKey(key, numAESRounds, numKeyExpRounds); //16:44, 24:52, 32:60
 
 		System.out.println("KEY " + Arrays.toString(key) + " -> " + key.length);
 		// System.out.println("Expanded KEY " + Arrays.toString(expandedKey) + " -> " + expandedKey.length);
@@ -121,28 +151,36 @@ class AES {
 		// System.out.println();
 
 		String input = "helloworldwhenyougethere";//scanner.nextLine();
-		encrypt(input, expandedKey, 10);
+		System.out.println("Input bytes: " + Arrays.toString(input.getBytes()));
+		String cipher = encrypt(input, expandedKey, numAESRounds);
+		System.out.println("Encrypted string: " + cipher);
 
+		// int[] plaintextArr = decrypt(cipher, expandedKey, 10);
+		// System.out.println("Output bytes: " + Arrays.toString(plaintextArr));
 	}
 
 	/**
      * Performs the encryption of input text
      * @param input plaintext to be encrypted
      * @return encrypted plaintext -> ciphertext
-     */
-	public static void encrypt(String input, int[] expandedKey, int numRounds) {
-		int[] intArr = convertToIntArray(input.getBytes());
+     */ 
+	public static String encrypt(String input, int[] expandedKey, int numRounds) {
+		System.out.println("Encrypting...");
 
-		int[] paddedInput = applyPadding(intArr);
+		/* Input preprocessing to generate even an number of blocks when converting to state format */
+		int[] paddedInput = applyPadding( convertToIntArray(input.getBytes()) );
 
 		int numStateBlocks = paddedInput.length / BLOCK_LENGTH;
 		int[][][] stateBlocks = new int[numStateBlocks][STATE_ROWS][STATE_COLS];
 
 		for (int i = 0; i < numStateBlocks; i++) {
+			/** Process one state block at a time */
 			int cpStart = i * BLOCK_LENGTH;
 			int cpEnd = cpStart + BLOCK_LENGTH;
 			stateBlocks[i] = inputToState(Arrays.copyOfRange(paddedInput, cpStart, cpEnd));
 			int[][] state = stateBlocks[i];
+
+			/** AES algorithm */
 			addRoundKey(state, Arrays.copyOfRange(expandedKey, 0, BLOCK_LENGTH));
 			for (int r = 1; r < numRounds; r++) {
 				subBytes(state);
@@ -153,10 +191,17 @@ class AES {
 			subBytes(state);
 			shiftRows(state);
 			addRoundKey(state, Arrays.copyOfRange(expandedKey, numRounds * BLOCK_LENGTH, (numRounds * BLOCK_LENGTH) + BLOCK_LENGTH));
+		
 		}
-		String out = MatrixToString(stateBlocks[0]);
-		System.out.println("Out: " + out);
-		System.out.println(hexToString(out));
+
+		/* Converting encrypted state matrices back to string representation */
+		String cipher = "";
+		for (int[][] s : stateBlocks) {
+			cipher += matrixToString(s);
+		}
+
+		// cipher = hexToString(cipher);
+		return cipher;
 	}
 
 	/**
@@ -164,7 +209,7 @@ class AES {
      * @param input ciphertext to be decrypted
      * @return decrypted ciphertext -> plaintext
      */
-	public static void decrypt(String input, int[] expandedKey, int numRounds) {
+	public static int[] decrypt(String input, int[] expandedKey, int numRounds) {
 		int[] inputArr = convertToIntArray(input.getBytes());
 
 		int numStateBlocks = inputArr.length / BLOCK_LENGTH;
@@ -186,8 +231,12 @@ class AES {
 			subBytes(state);
 			addRoundKey(state, Arrays.copyOfRange(expandedKey, numRounds * BLOCK_LENGTH, (numRounds * BLOCK_LENGTH) + BLOCK_LENGTH));
 		}
-		String out = MatrixToString(stateBlocks[0]);
-		System.out.println(out);
+		String paddedDecryptedString = matrixToString(stateBlocks[0]);
+		byte[] paddedDecryptedByteArr = paddedDecryptedString.getBytes();
+		int[] paddedDecryptedIntArr = convertToIntArray(paddedDecryptedByteArr);
+		int[] decryptedIntArr = removePadding(paddedDecryptedIntArr);
+
+		return decryptedIntArr;
 	}
 
 	/**
@@ -213,6 +262,18 @@ class AES {
    		System.arraycopy(padding, 0, paddedInput, input.length, padding.length);
     	
     	return paddedInput;
+    }
+
+    /**
+     * Removes padding from output decrypted string to obtain original plaintext
+     * @param input Array with padding
+     * @return array without padding
+     */
+    public static int[] removePadding(int[] input) {
+    	int paddingLength = input[input.length - 1];
+    	int originSize = input.length - paddingLength;
+    	int[] origin = Arrays.copyOfRange(input, 0, originSize);
+    	return origin;
     }
 
 
@@ -512,7 +573,7 @@ class AES {
 	    return ret;
 	}
 
-	public static String MatrixToString(int[][] m) //takes in a matrix and converts it into a line of 32 hex characters.
+	public static String matrixToString(int[][] m) //takes in a matrix and converts it into a line of 32 hex characters.
     {
         String t = "";
         for (int i = 0; i < m.length; i++) {
